@@ -1,145 +1,252 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-#define BUF_SIZE 4096
+#define BUFFER_SIZE 1024
 
-void ft_putstr_fd(char *str, int fd) {
-    int i = 0;
-    while (str[i]) {
-        write(fd, &str[i], 1);
-        i++;
-    }
-}
-
-void ft_putnbr_fd(int nb, int fd) {
-    char c = nb % 10 + '0';
-    if (nb / 10 != 0) {
-        ft_putnbr_fd(nb / 10, fd);
-    }
-    write(fd, &c, 1);
-}
-
-int get_map_info(char *map, int *num_lines, char *vacant, char *obstacle, char *full) {
-    int fd = open(map, O_RDONLY);
-    if (fd < 0) {
-        ft_putstr_fd("map error\n", 2);
-        return -1;
-    }
-    char buf[BUF_SIZE + 1];
-    int bytes_read = read(fd, buf, BUF_SIZE);
-    buf[bytes_read] = '\0';
-    int i = 0;
-    int num_lines_read = 0;
-    while (buf[i] && buf[i] != '\n') {
-        if (i == 0) {
-            *num_lines = buf[i] - '0';
-        } else if (i == 1) {
-            *vacant = buf[i];
-        } else if (i == 2) {
-            *obstacle = buf[i];
-        } else if (i == 3) {
-            *full = buf[i];
-        }
-        i++;
-    }
-    if (i < 4 || !*num_lines || !*vacant || !*obstacle || !*full) {
-        ft_putstr_fd("map error\n", 2);
-        return -1;
-    }
-    while (buf[i] && num_lines_read < *num_lines) {
-        if (buf[i] == '\n') {
-            num_lines_read++;
-        } else if (buf[i] != *vacant && buf[i] != *obstacle) {
-            ft_putstr_fd("map error\n", 2);
-            return -1;
-        }
-        i++;
-    }
-    if (num_lines_read < *num_lines) {
-        ft_putstr_fd("map error\n", 2);
-        return -1;
-    }
-    close(fd);
-    return 0;
-}
-
-
-int get_square_size(char *map, int num_lines, char vacant) {
-    int fd = open(map, O_RDONLY);
-    if (fd < 0) {
-        ft_putstr_fd("map error\n", 2);
-        return -1;
-    }
-    char buf[BUF_SIZE + 1];
-    int bytes_read = read(fd, buf, BUF_SIZE);
-    buf[bytes_read] = '\0';
-    int i = 0;
-    int line_length = 0;
-    while (buf[i] && buf[i] != '\n') {
-        i++;
-    }
-    line_length = i;
-    int square_size[num_lines][line_length];
-    i = 0;
-    int row = 0;
-    int col = 0;
-    while (buf[i] && row < num_lines) {
-        if (buf[i] == '\n') {
-            row++;
-            col = 0;
-        } else if (buf[i] == vacant) {
-            square_size[row][col] = 1;
-        } else {
-            square_size[row][col] = 0;
-        }
-        i++;
-        col++;
-    }
-    for (int r = 1; r < num_lines; r++) {
-        for (int c = 1; c < line_length; c++) {
-            if (square_size[r][c] == 1) {
-                int min_neighbour = square_size[r - 1][c - 1];
-                if (square_size[r - 1][c] < min_neighbour) {
-                    min_neighbour = square_size[r - 1][c];
-                }
-                if (square_size[r][c - 1] < min_neighbour) {
-                    min_neighbour = square_size[r][c - 1];
-                }
-                square_size[r][c] = min_neighbour + 1;
-            }
-        }
-    }
-    int max_size = 0;
-    int max_row = 0;
-    int max_col = 0;
-    for (int r = 0; r < num_lines; r++) {
-        for (int c = 0; c < line_length; c++) {
-            if (square_size[r][c] > max_size) {
-                max_size = square_size[r][c];
-                max_row = r;
-                max_col = c;
-            }
-        }
-    }
-    close(fd);
-    return max_size;
-}
-
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        ft_putstr_fd("usage: ./bsq [map]\n", 2);
-        return 1;
-    }
-    int num_lines;
-    char vacant;
+typedef struct s_map_info
+{
+    int height;
+    int width;
+    char empty;
     char obstacle;
     char full;
-    int result = get_map_info(argv[1], &num_lines, &vacant, &obstacle, &full);
-    if (result == -1) {
-        return 1;
+} t_map_info;
+
+int ft_strlen(char *str)
+{
+    int i = 0;
+
+    while (str[i])
+        i++;
+    return (i);
+}
+
+void ft_putstr(char *str)
+{
+    write(1, str, ft_strlen(str));
+}
+
+int ft_atoi(char *str)
+{
+    int i = 0;
+    int res = 0;
+
+    while (str[i] >= '0' && str[i] <= '9')
+    {
+        res = (res * 10) + (str[i] - '0');
+        i++;
     }
-    int square_size = get_square_size(argv[1], num_lines, vacant);
-    ft_putnbr_fd(square_size, 1);
-    return 0;
+    return (res);
+}
+
+void free_map(char **map, int height)
+{
+    int i = 0;
+
+    while (i < height)
+    {
+        free(map[i]);
+        i++;
+    }
+    free(map);
+}
+
+char **alloc_map(int height, int width)
+{
+    char **map = malloc(sizeof(char *) * height);
+    int i = 0;
+
+    while (i < height)
+    {
+        map[i] = malloc(sizeof(char) * (width + 1));
+        i++;
+    }
+    return (map);
+}
+
+char **read_map(int fd, t_map_info *map_info)
+{
+    char **map;
+    char buffer[BUFFER_SIZE + 1];
+    int bytes_read;
+    int i = 0;
+
+    bytes_read = read(fd, buffer, BUFFER_SIZE);
+    buffer[bytes_read] = '\0';
+    map_info->height = ft_atoi(buffer);
+    while (*buffer != '\n')
+        buffer++;
+    buffer++;
+    map_info->empty = *buffer;
+    buffer++;
+    map_info->obstacle = *buffer;
+    buffer++;
+    map_info->full = *buffer;
+    buffer++;
+    map = alloc_map(map_info->height, bytes_read / map_info->height - 1);
+    while (*buffer)
+    {
+        if (*buffer == '\n')
+        {
+            i++;
+            buffer++;
+        }
+        map[i][ft_strlen(map[i])] = *buffer;
+        buffer++;
+    }
+    return (map);
+}
+
+void print_map(char **map, t_map_info *map_info)
+{
+    int i = 0;
+
+    while (i < map_info->height)
+    {
+        write(1, map[i], map_info->width);
+        write(1, "\n", 1);
+        i++;
+    }
+}
+
+int is_valid_map(char **map, t_map_info *map_info)
+{
+    int i = 0;
+    int j = 0;
+    int count = 0;
+
+    while (i < map_info->height)
+    {
+        j = 0;
+        while (j < map_info->width)
+        {
+            if (map[i][j] != map_info->empty && map[i][j] != map_info->obstacle)
+                return (0);
+            if (map[i][j] == map_info->empty)
+                count++;
+            j++;
+        }
+        if (j != map_info->width + 1)
+            return (0);
+        i++;
+    }
+    if (count == 0)
+        return (0);
+    return (1);
+}
+
+
+
+int **create_int_map(char **map, t_map_info *map_info) {
+    int **int_map = malloc(sizeof(int *) * map_info->height);
+    int i = 0;
+    int j = 0;
+
+    while (i < map_info->height) {
+        int_map[i] = malloc(sizeof(int) * map_info->width);
+        j = 0;
+        while (j < map_info->width) {
+            if (map[i][j] == map_info->obstacle)
+                int_map[i][j] = 0;
+            else
+                int_map[i][j] = 1;
+            j++;
+        }
+        i++;
+    }
+    return (int_map);
+}
+
+int min(int a, int b, int c) {
+    int min = a;
+
+    if (b < min)
+        min = b;
+    if (c < min)
+        min = c;
+    return (min);
+}
+
+void find_biggest_square(char **map, t_map_info *map_info, int **int_map) {
+    int i = 1;
+    int j = 1;
+
+    while (i < map_info->height) {
+        j = 1;
+        while (j < map_info->width) {
+            if (int_map[i][j]) {
+                int_map[i][j] = min(int_map[i - 1][j], int_map[i][j - 1], int_map[i - 1][j - 1]) + 1;
+            }
+            j++;
+        }
+        i++;
+    }
+}
+
+void print_biggest_square(char **map, t_map_info *map_info, int **int_map) {
+    int i = 0;
+    int j = 0;
+    int max = 0;
+    int maxi = 0;
+    int maxj = 0;
+
+    while (i < map_info->height) {
+        j = 0;
+        while (j < map_info->width) {
+            if (int_map[i][j] > max) {
+                max = int_map[i][j];
+                maxi = i;
+                maxj = j;
+            }
+            j++;
+        }
+        i++;
+    }
+    i = 0;
+    while (i < max) {
+        j = 0;
+        while (j < max) {
+            map[maxi - i][maxj - j] = map_info->full;
+            j++;
+        }
+        i++;
+    }
+    print_map(map, map_info);
+}
+
+void solve_map(char **map, t_map_info *map_info) {
+    int **int_map;
+
+    if (!is_valid_map(map, map_info)) {
+        ft_putstr("map error\n");
+        return;
+    }
+    int_map = create_int_map(map, map_info);
+    find_biggest_square(map, map_info, int_map);
+    print_biggest_square(map, map_info, int_map);
+    free_map(map, map_info->height);
+    free(int_map);
+}
+
+int main(int argc, char **argv)
+{
+    int fd;
+    t_map_info map_info;
+    char **map;
+
+    if (argc != 2)
+    {
+        ft_putstr("Error\n");
+        return (1);
+    }
+    fd = open(argv[1], O_RDONLY);
+    if (fd == -1)
+    {
+        ft_putstr("Error\n");
+        return (1);
+    }
+    // rest of your code
+    return (0);
 }
